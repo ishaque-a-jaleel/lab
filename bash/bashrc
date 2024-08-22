@@ -1,0 +1,7 @@
+alias k='kubectl'
+alias c='clear'
+alias ll='ls -ltr'
+alias r='cd /c/Users/Urolime/repos'
+source ~/bash_completion.d/git
+source ~/bash_completion.d/kubectl
+complete -o default -F __start_kubectl k
