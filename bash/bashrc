@@ -1,7 +1,25 @@
+# Kubernetes aliases.
 alias k='kubectl'
+alias kp='kubectl get pods'
+alias kns='kubectl get ns'
+alias kd='kubectl get deploy'
+
+# Terraform aliases.
+alias t='terraform'
+alias tf='terraform fmt'
+alias tv='terraform validate'
+alias tp='terraform plan'
+alias ta='terraform apply'
+alias taa='terraform apply --auto-approve'
+alias td='terraform destroy'
+
+# General aliases.
 alias c='clear'
 alias ll='ls -ltr'
-alias r='cd /c/Users/Urolime/repos'
-source ~/bash_completion.d/git
-source ~/bash_completion.d/kubectl
+alias r='cd /mnt/d/repos'
+
+# Bash autocompletion.
+# Change the location as needed.
+source /mnt/c/Users/Urolime/bash_completion.d/git
+source /mnt/c/Users/Urolime/bash_completion.d/kubectl
 complete -o default -F __start_kubectl k
