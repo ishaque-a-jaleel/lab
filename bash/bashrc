@@ -13,10 +13,19 @@ alias ta='terraform apply'
 alias taa='terraform apply --auto-approve'
 alias td='terraform destroy'
 
+# Git aliases.
+alias g='git'
+alias gs='git status'
+alias ga='git add .'
+alias gc='git commit -m'
+alias gp='git push'
+alias gpull='git pull'
+
 # General aliases.
 alias c='clear'
 alias ll='ls -ltr'
 alias r='cd /mnt/d/repos'
+alias p='ping'
 
 # Bash autocompletion.
 # Change the location as needed.
