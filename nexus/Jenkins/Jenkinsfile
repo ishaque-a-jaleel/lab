@@ -1,0 +1,68 @@
+pipeline {
+    agent any
+
+    environment {
+        GIT_REPO = 'https://github.com/jenkins-docs/simple-java-maven-app.git'  // Code repo
+        // DOCKER_IMAGE = 'nexus-service:8081/simple-app'
+        DOCKER_IMAGE = 'simple-app'
+        BUILD_TAG = "${env.BUILD_NUMBER}"
+        // NEXUS_DOCKER_REPO = 'nexus-service:5000'
+        // NEXUS_DOCKER_REPO = 'nexus-service:8081/docker-releases'
+        // NEXUS_DOCKER_REPO = 'localhost:30081/docker-releases'
+        NEXUS_DOCKER_REPO = 'ulm-lp-92:30082/docker-releases'
+        // NEXUS_MAVEN_REPO = 'http://nexus.local:8081/repository/maven-releases/'
+        // NEXUS_MAVEN_REPO = 'http://nexus-service:8081/maven-releases/'
+        ARTIFACT_NAME = 'my-app-1.0-SNAPSHOT.jar' // Modify based on your project
+    }
+
+    stages {
+        stage('Clone Repository') {
+            steps {
+                echo 'Cloning repository...'
+                git branch: 'master', url: "${GIT_REPO}"
+            }
+        }
+
+        stage('Build Application') {
+            steps {
+                echo 'Building application...'
+                sh 'mvn clean package -DskipTests'
+            }
+        }
+
+        stage('Build Docker Image') {
+            steps {
+                echo 'Building Docker Image...'
+                sh "docker build -t ${DOCKER_IMAGE}:${BUILD_TAG} ."
+            }
+        }
+
+        stage('Push Image to Nexus') {
+            steps {
+                echo 'Pushing Docker image to Nexus...'
+                sh "docker login ${NEXUS_DOCKER_REPO} -u admin -p admin123"  // Replace with Nexus credentials
+                sh "docker tag ${DOCKER_IMAGE}:${BUILD_TAG} ${NEXUS_DOCKER_REPO}/simple-app:${BUILD_TAG}"
+                sh "docker push ${NEXUS_DOCKER_REPO}/simple-app:${BUILD_TAG}"
+            }
+        }
+
+        // stage('Upload Artifact to Nexus') {
+        //     steps {
+        //         echo 'Uploading build artifact to Nexus...'
+        //         sh """
+        //         curl -v -u admin:admin123 --upload-file target/${ARTIFACT_NAME} \
+        //         ${NEXUS_MAVEN_REPO}com/demo/simple-app/${BUILD_TAG}/${ARTIFACT_NAME}
+        //         """
+        //     }
+        // }
+    }
+
+    post {
+        success {
+            echo 'Build and push completed successfully!'
+        }
+        failure {
+            echo 'Build failed!'
+        }
+    }
+}

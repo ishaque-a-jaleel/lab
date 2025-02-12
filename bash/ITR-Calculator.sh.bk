@@ -1,0 +1,29 @@
+#!/bin/bash
+
+# 3-7 lac 5% 20k
+# 7-10 lac 10% 30k
+# 10-12 lac 15% 30k
+# 12-15 lac 20% 20k
+# >15 lac 30%
+# Additional 4% on the tax amount
+
+# User input the CTC
+read -p "Please enter your CTC" CTC
+
+# calculate the tax based on the new regime slab rates
+
+# | | | | | | | | | | | | |
+
+# If the CTC is below 3lac then no tax
+if [[ $CTC le 300000 ]]
+then
+  echo "You don't have to pay any income tax"
+fi
+# If the CTC is in between 3 and 7 then the tax = ((CTC - 3) * 5%) + ((CTC - 3) * 5%) * 4%
+if [[ 300000 < $CTC < 700000 ]]
+then
+  TAX=($CTC - 300000) * 5%
+# If the CTC is in between 7 and 10 then the tax = 20k + ((CTC - 7) * 10%) + (20k + ((CTC - 7) * 10%)) * 4%
+# If the CTC is in between 10 and 12 then the tax = 20k + 30k + ((CTC - 10) * 15%) + (20k + 30k + ((CTC - 10) * 15%)) * 4%
+# If the CTC is in between 12 and 15 then the tax = 20k + 30k + 30k + ((CTC - 12) * 20%) + (20k + 30k + 20k + ((CTC - 12) * 20%)) * 4%
+# If the CTC is above 15 lac then the tax = 20k + 30k+ 30k + 20k + ((CTC - 15) * 30%) + (20k + 30k+ 30k + 20k + ((CTC - 15) * 30%)) * 4%

@@ -1,0 +1,233 @@
+#AWSTemplateFormatVersion: '2010-09-01'
+#Description: 'CloudFormation template for Event Logging System'
+
+Resources:
+  # DynamoDB Table
+  EventLogsTable:
+    Type: 'AWS::DynamoDB::Table'
+    Properties:
+      TableName: EventLogs
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: EventID  
+          AttributeType: S
+      KeySchema:
+        - AttributeName: EventID
+          KeyType: HASH
+
+  # Lambda Execution Role
+  LambdaExecutionRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole'
+      Policies:
+        - PolicyName: DynamoDBAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - 'dynamodb:PutItem'
+                Resource: !GetAtt EventLogsTable.Arn
+
+  # Lambda Function
+  EventLoggerFunction:
+    Type: 'AWS::Lambda::Function'
+    Properties:
+      FunctionName: EventLogger
+      Runtime: python3.9
+      Handler: index.lambda_handler
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          from botocore.exceptions import ClientError
+
+          # Initialize DynamoDB client
+          dynamodb = boto3.resource('dynamodb')
+          table_name = 'EventLogs'  # Replace with your table name
+          table = dynamodb.Table(table_name)
+
+          def validate_payload(payload):
+              """Validates that the payload contains the required fields."""
+              required_fields = ['EventID', 'Timestamp', 'Details']
+              for field in required_fields:
+                  if field not in payload:
+                      return False, f"Missing required field: {field}"
+              return True, "Validation successful"
+
+          def lambda_handler(event, context):
+              """Lambda function to process log and insert into DynamoDB."""
+              try:
+                  # Handle payload depending on its source
+                  if 'body' in event:
+                      # API Gateway scenario: Body is a string
+                      payload = json.loads(event['body'])
+                  else:
+                      # Direct Lambda invocation: event is already a JSON object
+                      payload = event
+
+                  # Validate the payload
+                  is_valid, message = validate_payload(payload)
+                  if not is_valid:
+                      return {
+                          "statusCode": 400,
+                          "body": json.dumps({"error": message})
+                      }
+
+                  # Insert the log into DynamoDB
+                  table.put_item(Item=payload)
+
+                  return {
+                      "statusCode": 200,
+                      "body": json.dumps({"message": "Log successfully inserted."})
+                  }
+
+              except json.JSONDecodeError:
+                  return {
+                      "statusCode": 400,
+                      "body": json.dumps({"error": "Invalid JSON format"})
+                  }
+              except ClientError as e:
+                  return {
+                      "statusCode": 500,
+                      "body": json.dumps({"error": f"DynamoDB error: {e.response['Error']['Message']}"})
+                  }
+              except Exception as e:
+                  return {
+                      "statusCode": 500,
+                      "body": json.dumps({"error": f"Unexpected error: {str(e)}"})
+                  }
+
+  # 1. IAM Role for API Gateway Logging
+  ApiGatewayLoggingRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: apigateway.amazonaws.com
+            Action: 'sts:AssumeRole'
+      ManagedPolicyArns:
+        - 'arn:aws:iam::aws:policy/service-role/AmazonAPIGatewayPushToCloudWatchLogs'
+
+  # 2. API Gateway Account Settings
+  ApiGatewayAccount:
+    Type: 'AWS::ApiGateway::Account'
+    Properties:
+      CloudWatchRoleArn: !GetAtt ApiGatewayLoggingRole.Arn
+
+  # API Gateway
+  EventLoggerAPI:
+    Type: 'AWS::ApiGateway::RestApi'
+    Properties:
+      Name: EventLoggerAPI
+      Description: API for logging events
+
+  APIResource:
+    Type: 'AWS::ApiGateway::Resource'
+    Properties:
+      RestApiId: !Ref EventLoggerAPI
+      ParentId: !GetAtt EventLoggerAPI.RootResourceId
+      PathPart: 'log-event'
+
+  APIMethod:
+    Type: 'AWS::ApiGateway::Method'
+    Properties:
+      RestApiId: !Ref EventLoggerAPI
+      ResourceId: !Ref APIResource
+      HttpMethod: POST
+      AuthorizationType: NONE
+      Integration:
+        Type: AWS_PROXY
+        IntegrationHttpMethod: POST
+        Uri: !Sub 
+          - 'arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaArn}/invocations'
+          - LambdaArn: !GetAtt EventLoggerFunction.Arn
+
+  APIStage:
+    Type: 'AWS::ApiGateway::Stage'
+    DependsOn: ApiGatewayAccount  # Ensure account settings are configured first
+    Properties:
+      DeploymentId: !Ref APIDeployment
+      RestApiId: !Ref EventLoggerAPI
+      StageName: 'prod'
+      MethodSettings:
+        - ResourcePath: '/*'            # Apply to all resources
+          HttpMethod: '*'               # Apply to all HTTP methods
+          LoggingLevel: 'ERROR'         # Set logging to ERROR level
+          MetricsEnabled: true          # Enable CloudWatch metrics
+
+  # API Gateway Deployment
+  APIDeployment:
+    Type: 'AWS::ApiGateway::Deployment'
+    DependsOn: APIMethod
+    Properties:
+      RestApiId: !Ref EventLoggerAPI
+
+  # Lambda Permission for API Gateway
+  LambdaPermission:
+    Type: 'AWS::Lambda::Permission'
+    Properties:
+      Action: 'lambda:InvokeFunction'
+      FunctionName: !Ref EventLoggerFunction
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub 'arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${EventLoggerAPI}/*'
+  
+  # SNS Topic for Alarms
+  AlarmTopic:
+    Type: 'AWS::SNS::Topic'
+    Properties:
+      DisplayName: 'event-logger-alarm'
+
+  # SNS Topic Subscription
+  AlarmSubscription:
+    Type: 'AWS::SNS::Subscription'
+    Properties:
+      TopicArn: !Ref AlarmTopic
+      Protocol: 'email'
+      Endpoint: 'ishaque.abdul@urolime.com'
+
+  # CloudWatch Alarm
+  ErrorAlarm:
+    Type: 'AWS::CloudWatch::Alarm'
+    Properties:
+      AlarmName: LambdaErrorAlarm
+      AlarmDescription: Alert when Lambda errors exceed threshold
+      MetricName: Errors
+      Namespace: AWS/Lambda
+      Dimensions:
+        - Name: FunctionName
+          Value: !Ref EventLoggerFunction
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 3
+      ComparisonOperator: GreaterThanThreshold
+      Statistic: Sum
+      AlarmActions:
+        - !Ref AlarmTopic
+
+Outputs:
+  APIEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub 'https://${EventLoggerAPI}.execute-api.${AWS::Region}.amazonaws.com/prod/log-event'
+  DynamoDBTableName:
+    Description: Name of created DynamoDB table
+    Value: !Ref EventLogsTable
+  LambdaFunctionName:
+    Description: Name of created Lambda function
+    Value: !Ref EventLoggerFunction
+  SNSTopicARN:
+    Description: ARN of SNS Topic for Alarms
+    Value: !Ref AlarmTopic
