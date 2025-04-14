@@ -32,3 +32,8 @@ alias p='ping'
 source /mnt/c/Users/Urolime/bash_completion.d/git
 source /mnt/c/Users/Urolime/bash_completion.d/kubectl
 complete -o default -F __start_kubectl k
+
+# ZSH customization
+# https://medium.com/@sammykerridge/customizing-your-terminal-becoming-a-zsh-power-user-d9a8aab5aad0
+# https://kubernetes.io/docs/reference/kubectl/generated/kubectl_completion/
+# https://dev.to/budavariam/supercharge-your-command-line-2c9b
